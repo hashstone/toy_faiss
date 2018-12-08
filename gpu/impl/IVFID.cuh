@@ -2,10 +2,12 @@
 
 #include "IVFBase.cuh"
 
+#include <string>
+
 namespace faiss { namespace gpu {
 
 class IVFID : public IVFBase {
-    static const int NLIST = 32;
+    static const int NLIST = 4;
 
 public:
     IVFID(GpuResources* resources,
@@ -26,6 +28,9 @@ public:
     void getThrustVector();
 
     void dump_ids();
+
+private:
+    std::string getDeviceVectorInfo(int idx);
 };
 
 } }

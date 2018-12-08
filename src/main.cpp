@@ -14,7 +14,7 @@ using namespace faiss;
 gpu::IVFID *newIVFID()
 {
     // 0. get device
-    int deviceID = gpu::getCurrentDevice();    
+    int deviceID = gpu::getCurrentDevice();
     if (deviceID < 0)
     {
         cout << "fail to getCurrentDevice!" << endl;
@@ -34,7 +34,7 @@ gpu::IVFID *newIVFID()
     {
         cout << "fail to new IVFID";
     }
-    return ivfID;    
+    return ivfID;
 }
 
 void testIVFID()
@@ -50,11 +50,11 @@ void testIVFID()
     cout << "before insert, dump ids" << endl;
 
     // 1. insert ids
-    int intNum = 777;
-    vector<int> ids(intNum); 
+    int intNum = 33;
+    vector<int> ids(intNum);
     for (int i = 0; i < intNum; ++i)
     {
-        ids[i] = i; 
+        ids[i] = i;
     }
     idIdx->add(ids);
     /*
@@ -74,20 +74,29 @@ void testIVFID()
     //idIdx->testSetTensor();
     for (int i = 0; i < intNum; ++i)
     {
-        idIdx->remove_id(i);
+        idIdx->remove_id(7 + i);
+        idIdx->dump_ids();
     }
 
     // 4. dump ids
 
     // 5. insert ids
+    int addNum2 = 117;
+    vector<int> ids1(addNum2);
+    for (int i = 0; i < addNum2; ++i)
+    {
+        ids1[i] = 1000 + i;
+    }
+    idIdx->add(ids1);
 
-    // 6. dump ids 
+    // 6. dump ids
+    idIdx->dump_ids();
 }
 
 void testDeviceTensor()
 {
     // 0. get device
-    int deviceID = gpu::getCurrentDevice();    
+    int deviceID = gpu::getCurrentDevice();
     if (deviceID < 0)
     {
         cout << "fail to getCurrentDevice!" << endl;
@@ -123,7 +132,7 @@ void testDeviceTensor()
     }
 
     int i;
-    cin >> i; 
+    cin >> i;
     cout << "achor" << endl;
 }
 

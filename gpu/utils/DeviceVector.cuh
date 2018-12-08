@@ -50,6 +50,7 @@ class DeviceVector {
   size_t capacity() const { return capacity_; }
   T* data() { return data_; }
   const T* data() const { return data_; }
+  void remove(int dim) {num_ -= dim;}
 
   template <typename OutT>
   std::vector<OutT> copyToHost(cudaStream_t stream) const {

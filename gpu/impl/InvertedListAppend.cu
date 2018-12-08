@@ -208,4 +208,62 @@ void runIVFIDInvertedListFind(long id,
 #undef RUN_FIND
 }
 
+// only use one thread to delete id
+template <IndicesOptions Opt>
+__global__ void
+ivfpqInvertedListRemove(int listIdx,
+                        int listPos,
+                        void** listIndices,
+                        int* listLengths) {
+
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (idx > 1) {
+    return;
+  }
+
+  // use last element fit in the position you want deleted
+  if (Opt == INDICES_32_BIT) {
+    int *indice = (int*) listIndices[listIdx];
+    indice[listPos] = indice[listLengths[listIdx] - 1];
+  } else if (Opt == INDICES_64_BIT) {
+    long *indice = (long *) listIndices[listIdx];
+    indice[listPos] = indice[listLengths[listIdx] - 1];
+  } else {
+    // INDICES_CPU or INDICES_IVF; no indices are being stored
+  }
+}
+
+void runIVFIDInvertedListRemove(int listIdx,
+                                int listPos,
+                                thrust::device_vector<void*>& listIndices,
+                                thrust::device_vector<int>& listLengths,
+                                IndicesOptions indicesOptions,
+                                cudaStream_t stream)
+{
+#define RUN_REMOVE(IND)                               \
+  do {                                                \
+    ivfpqInvertedListRemove<IND><<<1, 1, 0, stream>>>(\
+      listIdx, \
+      listPos, \
+      listIndices.data().get(), \
+      listLengths.data().get());\
+  } while (0)
+
+  if ((indicesOptions == INDICES_CPU) || (indicesOptions == INDICES_IVF)) {
+    // no need to maintain indices on the GPU
+    RUN_REMOVE(INDICES_IVF);
+  } else if (indicesOptions == INDICES_32_BIT) {
+    RUN_REMOVE(INDICES_32_BIT);
+  } else if (indicesOptions == INDICES_64_BIT) {
+    RUN_REMOVE(INDICES_64_BIT);
+  } else {
+    // unknown index storage type
+    FAISS_ASSERT(false);
+  }
+  CUDA_TEST_ERROR();
+
+#undef RUN_FIND
+}
+
 } } // namespace

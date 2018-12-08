@@ -14,11 +14,12 @@
 
 namespace faiss { namespace gpu {
 
-using namespace std; 
+using namespace std;
 using namespace faiss::gpu;
 
 void IVFID::getThrustVector()
 {
+    /*
   std::cout << "------------------------" << std::endl;
   std::cout << "deviceListPointers ---> ";
   thrust::copy(deviceListIndexPointers_.begin(),
@@ -30,13 +31,14 @@ void IVFID::getThrustVector()
                deviceListLengths_.end(),
                std::ostream_iterator<int>(std::cout, " "));
   std::cout << "-------------------------" << std::endl;
+  */
 }
 
 IVFID::IVFID(GpuResources* resources,
                /// We do not own this reference
                IndicesOptions indicesOptions,
                MemorySpace space)
-    : IVFBase(resources, indicesOptions, space, NLIST) 
+    : IVFBase(resources, indicesOptions, space, NLIST)
 {
 }
 
@@ -63,7 +65,7 @@ void IVFID::add_from_cpu(int listId,
 
   // And our size has changed too
   int listLength = preNum + numVecs;
-  deviceListLengths_[listId] = listLength; 
+  deviceListLengths_[listId] = listLength;
 
   // We update this as well, since the multi-pass algorithm uses it
   maxListLength_ = std::max(maxListLength_, listLength);
@@ -102,7 +104,7 @@ int IVFID::add(const vector<int>& ids)
         auto it = assignCounts.find(ivfIdx);
         if (it != assignCounts.end())
         {
-            offset += it->second; 
+            offset += it->second;
             ++it->second;
         } else {
             assignCounts[ivfIdx] = 1;
@@ -116,7 +118,7 @@ int IVFID::add(const vector<int>& ids)
         ostringstream strOffset;
         for (int i = 0; i < ids.size(); ++i)
         {
-            strIds << listIdsHost[i] << " "; 
+            strIds << listIdsHost[i] << " ";
             strOffset << listOffsetHost[i] << " ";
         }
         cout << "listIds, size:" << listIdsHost.getSize(0) << ":" << strIds.str() << endl;
@@ -131,7 +133,7 @@ int IVFID::add(const vector<int>& ids)
             cout << "indices[" << i << "]'s size:" << indices->size() << " cap:" << indices->capacity() << endl;
         }
         // resize device vector
-        for (const auto &count : assignCounts) 
+        for (const auto &count : assignCounts)
         {
             auto &indices = deviceListIndices_[count.first];
             int newSize = count.second;
@@ -187,32 +189,91 @@ int IVFID::add(const vector<int>& ids)
                                    deviceListIndexPointers_,
                                    indicesOptions_,
                                    stream);
-        auto checkList = getListIndices(0);
     }
+}
+
+void dumpOffest(DeviceTensor<int, 1, true> offset)
+{
+    /*
+    int total = offset.getSize(0);
+    int *hostOffset = new int[offset.getSize(0)];
+    fromDevice(offset, hostOffset, stream);
+    ostringstream oss;
+    oss << "offset:";
+    for (int i = 0; i < total; ++i)
+    {
+        oss << " " << hostOffset[i];
+    }
+    cout << oss.str() << endl;
+    delete []hostOffset;
+    */
 }
 
 int IVFID::remove_id(int id)
 {
     auto stream = resources_->getDefaultStreamCurrentDevice();
 
+    int dim = 0;
+    if (indicesOptions_ == INDICES_32_BIT) {
+        dim = sizeof(int);
+    } else if (indicesOptions_ == INDICES_64_BIT) {
+        dim = sizeof(long);
+    } else {
+        cout << "the id type not support" << endl;
+        return 0;
+    }
+
+    // 0. get the id position
     DeviceTensor<int, 1, true> offset({NLIST});
-    // TODO
     runIVFIDInvertedListFind((long)id,
                              deviceListIndexPointers_,
                              deviceListLengths_,
                              indicesOptions_,
                              offset,
                              stream);
-    int *hostOffset = new int[NLIST];
+    //dumpOffset(offset);
+    int *hostOffset = new int[offset.getSize(0)];
     fromDevice(offset, hostOffset, stream);
-    ostringstream oss;
-    oss << "offset:";
+    int listIdx = -1;
+    int listPos = -1;
+    for (int i = 0; i < offset.getSize(0); ++i)
+    {
+        if (-1 == hostOffset[i]) {continue;}
+        listIdx = i;
+        listPos = hostOffset[i];
+        break;
+    }
+    if (listIdx == -1)
+    {
+        cout << "the id:" << id << " not exist" << endl;
+        return 0;
+    }
+    if (listIdx > NLIST || listPos > maxListLength_)
+    {
+        cout << "invalid idx:" << listIdx << " or pos:" << listPos << endl;
+    }
+    cout << "the postioin:[" << listIdx << ":" << listPos << "]" << endl;
+
+    // 1. delete id
+    runIVFIDInvertedListRemove(listIdx,
+                               listPos,
+                               deviceListIndexPointers_,
+                               deviceListLengths_,
+                               indicesOptions_,
+                               stream);
+
+    // 2. update device info
+    deviceListIndices_[listIdx]->remove(dim);
+    vector<int> removeListIdx{listIdx};
+    updateDeviceListInfo_(removeListIdx, stream);
+    int maxLength = 0;
     for (int i = 0; i < NLIST; ++i)
     {
-        oss << " " << hostOffset[i];
+        // update max list length
+        maxLength = std::max(maxLength, (int)deviceListIndices_[i]->size());
     }
-    cout << oss.str() << endl;
-    delete []hostOffset;
+    maxListLength_ = maxLength;
+
     return 0;
 }
 
@@ -227,6 +288,18 @@ int IVFID::remove_ids(const std::vector<int>& ids)
     return 0;
 }
 
+string IVFID::getDeviceVectorInfo(int idx)
+{
+    if (idx > deviceListIndices_.size())
+    {
+        return "";
+    }
+    ostringstream oss;
+    oss << "size:" << deviceListIndices_[idx]->size()
+        << ", cap:" << deviceListIndices_[idx]->capacity();
+    return oss.str();
+}
+
 void IVFID::dump_ids()
 {
     for (int i = 0; i < NLIST; ++i)
@@ -236,9 +309,10 @@ void IVFID::dump_ids()
         oss << "list[" << i << "]: ";
         for (const auto &id : indice)
         {
-            oss << id << " "; 
+            oss << id << " ";
         }
-        cout << oss.str() << endl; 
+        oss << " ---- " << getDeviceVectorInfo(i);
+        cout << oss.str() << endl;
     }
 }
 

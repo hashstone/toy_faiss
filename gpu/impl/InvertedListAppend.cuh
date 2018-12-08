@@ -34,12 +34,20 @@ void runIVFIDInvertedListAppend(Tensor<int, 1, true>& listIds,
                                 IndicesOptions indicesOptions,
                                 cudaStream_t stream);
 
-/// IVFID delete 
+/// IVFID find 
 void runIVFIDInvertedListFind(long id,
                               thrust::device_vector<void*>& listIndices,
                               thrust::device_vector<int>& listLengths,
                               IndicesOptions indicesOptions,
                               Tensor<int, 1, true>& offset, // output
                               cudaStream_t stream);
+
+/// IVFID remove
+void runIVFIDInvertedListRemove(int listIdx,
+                                int listPos,
+                                thrust::device_vector<void*>& listIndices,
+                                thrust::device_vector<int>& listLengths,
+                                IndicesOptions indicesOptions,
+                                cudaStream_t stream);
 
 } } // namespace
