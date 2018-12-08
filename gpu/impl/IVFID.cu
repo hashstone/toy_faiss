@@ -193,7 +193,26 @@ int IVFID::add(const vector<int>& ids)
 
 int IVFID::remove_id(int id)
 {
+    auto stream = resources_->getDefaultStreamCurrentDevice();
+
+    DeviceTensor<int, 1, true> offset({NLIST});
     // TODO
+    runIVFIDInvertedListFind((long)id,
+                             deviceListIndexPointers_,
+                             deviceListLengths_,
+                             indicesOptions_,
+                             offset,
+                             stream);
+    int *hostOffset = new int[NLIST];
+    fromDevice(offset, hostOffset, stream);
+    ostringstream oss;
+    oss << "offset:";
+    for (int i = 0; i < NLIST; ++i)
+    {
+        oss << " " << hostOffset[i];
+    }
+    cout << oss.str() << endl;
+    delete []hostOffset;
     return 0;
 }
 

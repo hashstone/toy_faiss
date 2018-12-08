@@ -15,6 +15,8 @@
 #include "../utils/Tensor.cuh"
 #include "../utils/StaticUtils.h"
 
+#include <iostream>
+
 namespace faiss { namespace gpu {
 
 __global__ void
@@ -127,22 +129,22 @@ runIVFIDInvertedListAppend(Tensor<int, 1, true>& listIds,
 template <IndicesOptions Opt>
 __global__ void
 ivfpqInvertedListFind(long id,
+                      int nlist,
                       void** listIndices,
                       int* listLengths,
-                      IndicesOptions indicesOptions,
-                      Tensor<int, 1, true>& offset) {
+                      Tensor<int, 1, true> offset) {
 
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (idx >= offset.size()) {
+  if (idx >= nlist) {
     return;
   }
 
   // FIXME: loop in kernel? 
   offset[idx] = -1;
+  int total = listLengths[idx];
   if (Opt == INDICES_32_BIT) {
-    int total = listLengths[idx] / sizeof(int);
-    int *indice = (int*) listIndices[indice];
+    int *indice = (int*) (listIndices[idx]);
     for (int i = 0; i < total; ++i)
     {
       if (indice[i] == (int)id)
@@ -152,8 +154,7 @@ ivfpqInvertedListFind(long id,
       }
     } 
   } else if (Opt == INDICES_64_BIT) {
-    int total = listLengths[idx].size() / sizeof(long);
-    long *indice = (long*) listIndices[indice];
+    long *indice = (long*) (listIndices[idx]);
     for (int i = 0; i < total; ++i)
     {
       if (indice[i] == id)
@@ -167,8 +168,6 @@ ivfpqInvertedListFind(long id,
   }
 }
 
-
-
 void runIVFIDInvertedListFind(long id,
                               thrust::device_vector<void*>& listIndices,
                               thrust::device_vector<int>& listLengths,
@@ -176,8 +175,9 @@ void runIVFIDInvertedListFind(long id,
                               Tensor<int, 1, true>& offset, // output
                               cudaStream_t stream)
 {
-  int numThreads = std::min(listIds.getSize(0), getMaxThreadsCurrentDevice());
-  int numBlocks = utils::divUp(listIds.getSize(0), numThreads);
+  int nlist = (int)listIndices.size();
+  int numThreads = std::min(nlist, getMaxThreadsCurrentDevice());
+  int numBlocks = utils::divUp(nlist, numThreads);
 
   dim3 grid(numBlocks);
   dim3 block(numThreads);
@@ -186,9 +186,10 @@ void runIVFIDInvertedListFind(long id,
   do {                                                     \
     ivfpqInvertedListFind<IND><<<grid, block, 0, stream>>>(\
       id, \
+      offset.getSize(0), \
       listIndices.data().get(), \
       listLengths.data().get(), \
-      offset.data().get());     \
+      offset);     \
   } while (0)
 
   if ((indicesOptions == INDICES_CPU) || (indicesOptions == INDICES_IVF)) {

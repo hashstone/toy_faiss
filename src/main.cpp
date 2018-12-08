@@ -71,6 +71,11 @@ void testIVFID()
     idIdx->dump_ids();
 
     // 3. delete ids
+    //idIdx->testSetTensor();
+    for (int i = 0; i < intNum; ++i)
+    {
+        idIdx->remove_id(i);
+    }
 
     // 4. dump ids
 
